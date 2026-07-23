@@ -82,10 +82,7 @@ nav:
     - Simulation Details : simulation-details.md
     - Installation: installing-maple-sim.md
     - Using the Simulated Arena: using-the-simulated-arena.md
-    - Swerve Simulation: 
-        - Overview: swerve-simulation-overview.md
-        - Simple Swerve Sim: swerve-sim-easy.md
-        - Hardware Abstraction Sim : swerve-sim-hardware-abstraction.md
+    - Simulating the Drivetrain: swerve-simulation-overview.md
     - Simulating Intake: simulating-intake.md
     - Simulating Opponent Robots: simulating-opponent-robots.md
     - Simulating Projectiles: simulating-projectiles.md

@@ -1,4 +1,4 @@
-# Simulating Swerve Drivetrain
+# Simulating the Drivetrain
 
 !!! info
       You are reading the documentation for a Beta version of maple-sim. API references are subject to change in future versions.
@@ -7,90 +7,33 @@
       This realistic simulation allows you to accomplish a variety of tasks without the real robot. You can practice driving, test autonomous routines, and fine-tune advanced functions such as auto-alignment, just to name a few.
 
 ---
-## 0. Creating the Configuration for a Swerve Drive Simulation
+## 0. Creating the Drivetrain Configuration
 
-The `DriveTrainSimulationConfig` object encapsulates the physical properties and configuration of a swerve drivetrain within the simulation environment. It allows you to specify key components such as motor types, gyro configuration, swerve module dynamics, and robot geometry.
-
-=== "COTS Swerve"
-    <div>
-        ```Java
-        // Create and configure a drivetrain simulation configuration
-        final DriveTrainSimulationConfig driveTrainSimulationConfig = DriveTrainSimulationConfig.Default()
-                // Specify gyro type (for realistic gyro drifting and error simulation)
-                .withGyro(COTS.ofPigeon2())
-                // Specify swerve module (for realistic swerve dynamics)
-                .withSwerveModule(COTS.ofMark4(
-                        DCMotor.getKrakenX60(1), // Drive motor is a Kraken X60
-                        DCMotor.getFalcon500(1), // Steer motor is a Falcon 500
-                        COTS.WHEELS.COLSONS.cof, // Use the COF for Colson Wheels
-                        3)) // L3 Gear ratio
-                // Configures the track length and track width (spacing between swerve modules)
-                .withTrackLengthTrackWidth(Inches.of(24), Inches.of(24))
-                // Configures the bumper size (dimensions of the robot bumper)
-                .withBumperSize(Inches.of(30), Inches.of(30));
-        ```
-    </div>
-=== "Custom Swerve"
-    <div>
-        ```Java
-        // Create and configure a drivetrain simulation configuration
-        final DriveTrainSimulationConfig driveTrainSimulationConfig = DriveTrainSimulationConfig.Default()
-                // Specify gyro type (for realistic gyro drifting and error simulation)
-                .withGyro(COTS.ofPigeon2())
-                // Specify swerve module (for realistic swerve dynamics)
-                .withSwerveModule(new SwerveModuleSimulationConfig(
-                        DCMotor.getKrakenX60(1), // Drive motor is a Kraken X60
-                        DCMotor.getFalcon500(1), // Steer motor is a Falcon 500
-                        6.12, // Drive motor gear ratio.
-                        12.8, // Steer motor gear ratio.
-                        Volts.of(0.1), // Drive friction voltage.
-                        Volts.of(0.1), // Steer friction voltage
-                        Inches.of(2), // Wheel radius
-                        KilogramSquareMeters.of(0.03), // Steer MOI
-                        1.2)) // Wheel COF
-                // Configures the track length and track width (spacing between swerve modules)
-                .withTrackLengthTrackWidth(Inches.of(24), Inches.of(24))
-                // Configures the bumper size (dimensions of the robot bumper)
-                .withBumperSize(Inches.of(30), Inches.of(30));
-        ```
-    </div>
-=== "Custom Swerve with Mixed Module Configurations"
-    <div>
-        ```Java
-        final SwerveModuleSimulationConfig 
-                FRONT_LEFT_MODULE_CONFIG = new SwerveModuleSimulationConfig(...),
-                FRONT_RIGHT_MODULE_CONFIG = new SwerveModuleSimulationConfig(...),
-                BACK_LEFT_MODULE_CONFIG = new SwerveModuleSimulationConfig(...),
-                BACK_RIGHT_MODULE_CONFIG = new SwerveModuleSimulationConfig(...);
-
-        // Create and configure a drivetrain simulation configuration
-        final DriveTrainSimulationConfig driveTrainSimulationConfig = DriveTrainSimulationConfig.Default()
-                // Specify gyro type (for realistic gyro drifting and error simulation)
-                .withGyro(COTS.ofPigeon2())
-                // Specify swerve module (for realistic swerve dynamics)
-                .withSwerveModules(
-                        FRONT_LEFT_MODULE_CONFIG, 
-                        FRONT_RIGHT_MODULE_CONFIG, 
-                        BACK_LEFT_MODULE_CONFIG, 
-                        BACK_RIGHT_MODULE_CONFIG)
-                // Configures the track length and track width (spacing between swerve modules)
-                .withTrackLengthTrackWidth(Inches.of(24), Inches.of(24))
-                // Configures the bumper size (dimensions of the robot bumper)
-                .withBumperSize(Inches.of(30), Inches.of(30));
-        ```
-    </div>
-
----
-## 1. Instantiate and Register a Swerve Drive Simulation
-
-The `SwerveDriveSimulation` class represents a simulated swerve drivetrain within the simulation environment. It provides the necessary code to simulate motors, encoders, and the dynamic behavior of a real robot, including accurate handling of controls, motor response, and motion. Additionally, it interacts with the field through its collision space, allowing the simulation to react with other objects in the physics engine.
-
-You can instantiate the swerve drive simulation using the following code:
+The `DriveTrainSimulationConfig` object holds the physical properties of the drivetrain. It is intentionally minimal: there is no module, motor, or gyro configuration to set up — just the robot's mass, bumper size, and how much grip its wheels have on the floor.
 
 ```java
-/* Create a swerve drive simulation */
-this.swerveDriveSimulation = new SwerveDriveSimulation(
-        // Specify Configuration
+// Create and configure a drivetrain simulation configuration
+final DriveTrainSimulationConfig driveTrainSimulationConfig = DriveTrainSimulationConfig.Default()
+        // Configures the mass of the robot (including bumpers)
+        .withRobotMass(Kilograms.of(50))
+        // Configures the bumper size (dimensions of the robot bumper)
+        .withBumperSize(Inches.of(30), Inches.of(30))
+        // Configures how much grip the wheels have on the floor
+        // See COTS.WHEELS for reference coefficients of common wheels
+        .withWheelCoefficientOfFriction(COTS.WHEELS.COLSONS.cof);
+```
+
+---
+## 1. Instantiate and Register a Drivetrain Simulation
+
+The `DriveTrainSimulation` class represents the simulated chassis within the simulation environment. It models the chassis as a single rigid body: it has mass, rotational inertia, and a collision space, allowing it to interact with the field and other robots through the physics engine.
+
+You can instantiate the drivetrain simulation using the following code:
+
+```java
+/* Create a drivetrain simulation */
+this.driveTrainSimulation = new DriveTrainSimulation(
+        // Specify configuration
         driveTrainSimulationConfig,
         // Specify starting pose
         new Pose2d(3, 3, new Rotation2d())
@@ -101,25 +44,34 @@ The simulation must be registered to the simulation world for it to function cor
 
 ```java
 // Register the drivetrain simulation to the default simulation world
-SimulatedArena.getInstance().addDriveTrainSimulation(swerveDriveSimulation);
+SimulatedArena.getInstance().addDriveTrainSimulation(driveTrainSimulation);
 ```
 
 ---
-## 2. Manipulating the Simulated Swerve
+## 2. Driving the Simulated Chassis
 
-<div class="grid cards" markdown>
--   **The simple approach**
-    
-    ---
-    *This approach emphasizes ease of use while maintaining a reasonably accurate model of robot behavior. Although the physics simulation is realistic enough to accurately mimic your drivetrain, the code used to manipulate the simulated drivetrain is embedded into maple-sim for convenience. As a result, it may differ slightly from the code running on your real robot.*
+The **only input** the simulation needs is a `ChassisSpeeds`, representing the speeds the drivetrain would achieve **if it were not subject to physics** — exactly what your drive code already computes every loop on a real robot (from joystick input, a holonomic drive controller, PathPlanner's output, etc.).
 
-    [:octicons-arrow-right-24: View Documentation](./swerve-sim-easy.md)
+Call `setDesiredChassisSpeeds(...)` every loop with that value; the simulation takes care of converting it into realistic motion, respecting the chassis' mass, rotational inertia, and the wheels' grip limit (aggressive commands will cause realistic, grip-limited acceleration rather than an instant jump to speed):
 
--   **The professional approach**
+```java
+@Override
+public void periodic() {
+    // Robot-relative chassis speeds, exactly as you would command a real drivetrain
+    final ChassisSpeeds desiredSpeeds = ...;
+    driveTrainSimulation.setDesiredChassisSpeeds(desiredSpeeds);
+}
+```
 
-    ---
-    *This approach to simulating swerve drive accurately mimics the behavior of your drivetrain code by running the exact same code used on the real robot directly on the simulated robot. While this ensures high fidelity in the simulation, it does require a significant amount of effort to set up properly.*
+!!! tip
+      Since there's no module or motor simulation to abstract away, this is the *only* API you need to drive the simulated chassis — whether you're doing simple joystick teleop, closed-loop PathPlanner following, or defensive AI opponent-robot control. See [Simulating Opponent Robots](./simulating-opponent-robots.md) for a complete example.
 
-    [:octicons-arrow-right-24: View Documentation](./swerve-sim-hardware-abstraction.md)
+---
+## 3. Reading Back the Simulated State
 
-</div>
+- `getSimulatedDriveTrainPose()` — returns the actual (ground-truth) `Pose2d` of the chassis. Use this to display the robot on [AdvantageScope Field3d](https://docs.advantagescope.org/tab-reference/3d-field/) or to update a [PhotonVision simulation](https://docs.photonvision.org/en/latest/docs/simulation/simulation-java.html#updating-the-simulation-world).
+- `getDriveTrainSimulatedChassisSpeedsRobotRelative()` / `getDriveTrainSimulatedChassisSpeedsFieldRelative()` — returns the actual (ground-truth) chassis speeds, after friction/grip limiting has been applied.
+- `driveBaseRadius()`, `maxLinearAcceleration()`, `maxAngularAcceleration()` — geometry/grip-derived helpers, useful for scaling joystick input or configuring a path-following controller.
+
+!!! note
+      All of the above are **ground truth** — there is no simulated encoder noise or gyro drift. If your drive code relies on odometry to compute the pose it feeds back to `setDesiredChassisSpeeds` (e.g. through a `SwerveDrivePoseEstimator`/`PoseEstimator`), you can build that on top of `getSimulatedDriveTrainPose()` yourself the same way you would report a "true" pose from a simulated sensor.

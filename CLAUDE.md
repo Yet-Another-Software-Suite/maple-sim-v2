@@ -298,27 +298,16 @@ org.ironmaple.simulation/
 │
 ├── drivesims/                              # Drivetrain simulation
 │   ├── AbstractDriveTrainSimulation.java
-│   ├── SwerveDriveSimulation.java
-│   ├── SelfControlledSwerveDriveSimulation.java
-│   ├── SwerveModuleSimulation.java
-│   ├── GyroSimulation.java
-│   ├── COTS.java                           # Commercial Off-The-Shelf components
+│   ├── DriveTrainSimulation.java
+│   ├── COTS.java                           # Wheel coefficient-of-friction reference values
 │   └── configs/
 │       ├── DriveTrainSimulationConfig.java
-│       ├── SwerveModuleSimulationConfig.java
 │       └── BoundingCheck.java
 │
 ├── gamepieces/                             # Game piece simulations
 │   ├── GamePiece.java
 │   ├── GamePieceOnFieldSimulation.java
 │   └── GamePieceProjectile.java
-│
-├── motorsims/                              # Motor simulations
-│   ├── MapleMotorSim.java
-│   ├── SimulatedMotorController.java
-│   ├── SimulatedBattery.java
-│   ├── SimMotorState.java
-│   └── SimMotorConfigs.java
 │
 ├── seasonspecific/                         # Season-specific implementations
 │   ├── crescendo2024/
@@ -347,8 +336,7 @@ org.ironmaple.simulation/
     ├── LegacyFieldMirroringUtils2024.java
     └── mathutils/
         ├── GeometryConvertor.java
-        ├── MapleCommonMath.java
-        └── SwerveStateProjection.java
+        └── MapleCommonMath.java
 ```
 
 ---
@@ -404,37 +392,26 @@ org.ironmaple.simulation/
 
 ### Drivetrain Simulation
 
-#### `SwerveDriveSimulation`
-**Location**: `org.ironmaple.simulation.drivesims.SwerveDriveSimulation`
+Maple-sim simulates the drivetrain as a single rigid body driven directly by a commanded `ChassisSpeeds`, rather than by individually modeled swerve modules/motors/gyro. The commanded speeds are treated as the idealized, "if there was no physics" target velocity (exactly what a real robot's drive code computes every loop); the simulation converts that into realistic motion by applying a wheel-grip-limited force/torque toward it, respecting mass, rotational inertia, and friction limits. There is no simulated motor current, gear ratio, or gyro drift/noise — reported pose and chassis speeds are ground truth.
 
-**Purpose**: Simulates a swerve drivetrain with realistic physics.
+#### `DriveTrainSimulation`
+**Location**: `org.ironmaple.simulation.drivesims.DriveTrainSimulation`
+
+**Purpose**: Simulates a holonomic drivetrain chassis driven directly by chassis speeds.
 
 **Simulation Physics**:
-1. **Propelling forces** from drive motors (`simulateModulePropellingForces()`)
-2. **Friction forces** pulling robot toward module speeds (`simulateChassisFrictionForce()`)
-3. **Rotational friction** torque (`simulateChassisFrictionTorque()`)
-4. **Centripetal forces** during turns
+1. **Friction force** pulling the robot from its current ground velocity toward the desired chassis speeds (`simulateChassisFrictionForce()`)
+2. **Rotational friction** torque doing the same for angular velocity (`simulateChassisFrictionTorque()`)
+3. **Centripetal forces** when the commanded direction of travel changes
 
-**Key Fields**:
-- `moduleSimulations` - Array of SwerveModuleSimulation
-- `gyroSimulation` - GyroSimulation instance
-- `moduleTranslations` - Translation2d array of module positions
-- `kinematics` - SwerveDriveKinematics instance
-- `gravityForceOnEachModule` - Force per module for friction calculations
+Both are limited by the wheels' gripping force, computed from `config.robotMass` and `config.wheelCoefficientOfFriction` (Coulomb friction: `F = μmg`).
 
 **Important Methods**:
+- `setDesiredChassisSpeeds(ChassisSpeeds)` - **Primary input.** Sets the target chassis speeds, robot-relative, called every loop like a real robot's drive periodic
 - `simulationSubTick()` - Updates physics (called by SimulatedArena)
-- `getModules()` - Returns SwerveModuleSimulation array
-- `getGyroSimulation()` - Returns gyro simulator
-- `maxLinearVelocity()` - Maximum achievable linear velocity
-- `maxAngularVelocity()` - Maximum achievable angular velocity
-- `maxLinearAcceleration(Current)` - Max linear accel with current limit
-- `maxAngularAcceleration(Current)` - Max angular accel with current limit
-- `driveBaseRadius()` - Returns drive base radius
-
-**Private Methods**:
-- `getDesiredSpeed()` - Chassis speeds modules are trying to achieve
-- `getModuleSpeeds()` - Current module speeds (may differ from floor due to skid)
+- `maxLinearAcceleration()` - Max linear acceleration, limited by wheel grip
+- `maxAngularAcceleration()` - Max angular acceleration, limited by wheel grip
+- `driveBaseRadius()` - Approximate drive base radius (derived from bumper size, since individual module/wheel positions are no longer modeled)
 
 **Configuration**: Uses `DriveTrainSimulationConfig`
 
@@ -451,9 +428,9 @@ org.ironmaple.simulation/
 
 **Important Methods**:
 - `setSimulationWorldPose(Pose2d)` - Teleports robot to pose
-- `setRobotSpeeds(ChassisSpeeds)` - Sets robot velocity instantly
-- `getSimulatedDriveTrainPose()` - Returns actual robot pose in simulation
-- `getDriveTrainSimulatedChassisSpeedsRobotRelative()` - Returns current speeds
+- `setRobotSpeeds(ChassisSpeeds)` - Sets robot velocity instantly (bypasses physics; use `DriveTrainSimulation#setDesiredChassisSpeeds` for grip-limited convergence instead)
+- `getSimulatedDriveTrainPose()` - Returns actual (ground-truth) robot pose in simulation
+- `getDriveTrainSimulatedChassisSpeedsRobotRelative()` / `...FieldRelative()` - Returns actual (ground-truth) chassis speeds
 - `simulationSubTick()` - Abstract method for physics updates
 
 **Extends**: `org.dyn4j.dynamics.Body` (physics body)
@@ -463,25 +440,20 @@ org.ironmaple.simulation/
 #### `DriveTrainSimulationConfig`
 **Location**: `org.ironmaple.simulation.drivesims.configs.DriveTrainSimulationConfig`
 
-**Purpose**: Configuration object for swerve drivetrain simulation.
+**Purpose**: Configuration object for the drivetrain simulation. Deliberately minimal — no module, motor, or gyro configuration.
 
 **Key Fields**:
 - `robotMass` - Mass (includes bumpers)
 - `bumperLengthX` - Front-to-back dimension
 - `bumperWidthY` - Left-to-right dimension
-- `moduleTranslations` - Module positions
-- `swerveModuleSimulationFactories` - Module factories (1 or 4)
-- `gyroSimulationFactory` - Gyro factory
+- `wheelCoefficientOfFriction` - Wheel-to-floor coefficient of friction (limits grip-based acceleration/torque)
 
 **Important Methods**:
-- `Default()` - Creates default config (45kg, 0.76m bumpers, etc.)
-- `withGyro(Supplier<GyroSimulation>)` - Sets gyro type
-- `withSwerveModule(Supplier<SwerveModuleSimulation>)` - Sets all modules
-- `withSwerveModules(Supplier<SwerveModuleSimulation>...)` - Sets individual modules (4 required)
-- `withTrackLengthTrackWidth(Distance, Distance)` - Sets module spacing
-- `withBumperSize(Distance, Distance)` - Sets bumper dimensions
+- `Default()` - Creates default config (45kg, 0.76m bumpers, Colson wheel COF)
 - `withRobotMass(Mass)` - Sets robot mass
-- `driveBaseRadius()` - Calculates drive base radius
+- `withBumperSize(Distance, Distance)` - Sets bumper dimensions
+- `withWheelCoefficientOfFriction(double)` - Sets wheel COF
+- `driveBaseRadius()` - Approximates the center-to-wheel distance from bumper size (used only to convert grip force into a torque limit)
 - `getDensityKgPerSquaredMeters()` - Calculates chassis density
 
 ---
@@ -489,23 +461,11 @@ org.ironmaple.simulation/
 #### `COTS`
 **Location**: `org.ironmaple.simulation.drivesims.COTS`
 
-**Purpose**: Factory methods for Commercial Off-The-Shelf components.
-
-**Gyros**:
-- `ofPigeon2()` / `ofPigeon2(double)` - Pigeon 2.0 (default drift)
-- `ofNavX()` - NavX gyro
-- `ofADIS16470()` - ADIS16470 gyro
-- `ofADXRS450()` - ADXRS450 gyro
-
-**Swerve Modules**:
-- `ofMark4(DCMotor, DCMotor, double, int)` - SDS MK4 (L1-L4)
-- `ofMark4i(...)` - SDS MK4i
-- `ofSwerveX(...)` - WCP SwerveX
+**Purpose**: Reference coefficient-of-friction values for common wheels.
 
 **Wheels** (nested enum `WHEELS`):
-- `COLSONS` - Colson wheels
-- `BLUE_NITRILE` - Blue nitrile wheels
-- Each has `cof` (coefficient of friction) field
+- `COLSONS`, `DEFAULT_NEOPRENE_TREAD`, `BLUE_NITRILE_TREAD`, `VEX_GRIP_V2`, `SLS_PRINTED_WHEELS`
+- Each has a `cof` (coefficient of friction) field, usable directly as `DriveTrainSimulationConfig#wheelCoefficientOfFriction`
 
 ---
 

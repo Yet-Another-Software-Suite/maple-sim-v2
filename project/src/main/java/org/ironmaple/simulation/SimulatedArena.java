@@ -29,7 +29,6 @@ import org.ironmaple.simulation.drivesims.AbstractDriveTrainSimulation;
 import org.ironmaple.simulation.gamepieces.GamePiece;
 import org.ironmaple.simulation.gamepieces.GamePieceOnFieldSimulation;
 import org.ironmaple.simulation.gamepieces.GamePieceProjectile;
-import org.ironmaple.simulation.motorsims.SimulatedBattery;
 import org.ironmaple.simulation.seasonspecific.rebuilt2026.Arena2026Rebuilt;
 import org.ironmaple.utils.mathutils.GeometryConvertor;
 
@@ -574,7 +573,6 @@ public abstract class SimulatedArena {
      * </ul>
      */
     protected void simulationSubTick(int subTickNum) {
-        SimulatedBattery.simulationSubTick();
         driveTrainSimulations.forEach(AbstractDriveTrainSimulation::simulationSubTick);
 
         GamePieceProjectile.updateGamePieceProjectiles(this, this.gamePieceLaunched());

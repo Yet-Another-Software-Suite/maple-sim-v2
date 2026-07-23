@@ -1,12 +1,9 @@
 # Simulation Details
 
-## Swerve-Drive Simulation Dynamics with Interactive Field
+## Drivetrain Simulation Dynamics with Interactive Field
 The standout feature of this project is the integration of the [dyn4j physics engine](https://github.com/dyn4j/dyn4j), which enables a highly realistic and interactive simulation environment.
 
-In traditional swerve drive simulations, the drivetrain is typically modeled using several [DCMotorSim](https://github.wpilib.org/allwpilib/docs/release/java/edu/wpi/first/wpilibj/simulation/DCMotorSim.html) instances to simulate motor behavior. 
-
-In maple-sim, the drivetrain simulation goes a step further by calculating the frictional and propelling forces on each swerve module. 
-These forces are used to model the drivetrain as a rigid body, allowing for more accurate interaction with the field environment.
+Rather than modeling individual swerve modules or motors, maple-sim drives the chassis directly from a commanded `ChassisSpeeds` — the idealized velocity your drive code would achieve with no physics in the way. The simulation converts that into realistic motion by applying a wheel-grip-limited friction force and torque toward it, modeling the drivetrain as a single rigid body so it can interact accurately with the field environment.
 
 ![swerve drive dynamics.gif](media%2Fswerve%20drive%20dynamics.gif)
 
@@ -14,17 +11,11 @@ The realistic simulation dynamics allow you to test and refine auto paths as the
 
 ![path following simulation.gif](media%2Fpath%20following%20simulation.gif)
 
-**[View Full Document on Swerve Simulation](./swerve-simulation-overview.md) >>>**
+**[View Full Document on Drivetrain Simulation](./swerve-simulation-overview.md) >>>**
 
-## Odometry + Vision Simulation
+## Vision Simulation
 
-By modeling the interaction between the wheels and the floor, our simulation can replicate odometry measurement errors caused by skidding.
-
-Additionally, the IMU simulation includes drift, where hard impacts on the virtual robot will cause the IMU to behave similarly to how it would in real-world scenarios.
-
-![Odometry Sim](media/odometry%20simulation.gif)
-
-Beyond odometry, you can integrate [photonlib](https://docs.photonvision.org/en/latest/docs/simulation/simulation-java.html) to simulate how vision-based odometry can correct your robot’s position.
+The simulation reports the chassis' ground-truth pose and chassis speeds (no simulated encoder noise or gyro drift), which you can feed into [photonlib](https://docs.photonvision.org/en/latest/docs/simulation/simulation-java.html) to simulate how vision-based odometry can correct your robot's position.
 
 ![vision simulation.gif](media%2Fvision%20simulation.gif)
 

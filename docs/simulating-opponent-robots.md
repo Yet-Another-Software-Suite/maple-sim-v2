@@ -20,7 +20,7 @@ Opponent robots can be added to the field for realistic driver practice. They ca
 
 ## 1. Creating Opponent Robots
 
-Opponent robots are simulated using the `SimplifiedSwerveDriveSimulation` class. A container class is required to manage the instances.
+Opponent robots are simulated using the `DriveTrainSimulation` class directly — see [Simulating the Drivetrain](./swerve-simulation-overview.md) for the full API. A container class is required to manage the instances.
 
 When opponent robots are not actively on the field, they are positioned in "queening" areas outside the field to avoid unnecessary interactions.
 
@@ -35,21 +35,16 @@ public class AIRobotInSimulation extends SubsystemBase {
         new Pose2d(-2, 0, new Rotation2d())
     };
 
-    private final SimplifiedSwerveDriveSimulation driveSimulation;
+    private final DriveTrainSimulation driveSimulation;
     private final Pose2d queeningPose;
     private final int id;
 
     public AIRobotInSimulation(int id) {
         this.id = id;
         this.queeningPose = ROBOT_QUEENING_POSITIONS[id];
-        this.driveSimulation = new SimplifiedSwerveDriveSimulation(new SwerveDriveSimulation(
-            DRIVETRAIN_CONFIG, 
-            queeningPose
-        ));
+        this.driveSimulation = new DriveTrainSimulation(DRIVETRAIN_CONFIG, queeningPose);
 
-        SimulatedArena.getInstance().addDriveTrainSimulation(
-            driveSimulation.getDriveTrainSimulation()
-        );
+        SimulatedArena.getInstance().addDriveTrainSimulation(driveSimulation);
     }
 }
 ```
@@ -66,7 +61,9 @@ Use [PathPlanner](https://pathplanner.dev/home.html) to enable opponent robots t
 public class AIRobotInSimulation extends SubsystemBase {
     ... // previous code not shown
 
-    // PathPlanner configuration
+    // PathPlanner configuration — this describes the robot to PathPlanner's own path-following
+    // model and does not need to match anything in maple-sim (which no longer models individual
+    // modules); use whatever values you'd use to configure PathPlanner for a real robot.
     private static final RobotConfig PP_CONFIG = new RobotConfig(
             55, // Robot mass in kg
             8,  // Robot MOI
@@ -84,12 +81,11 @@ public class AIRobotInSimulation extends SubsystemBase {
         return new FollowPathCommand(
                 path, // Specify the path
                 // Provide actual robot pose in simulation, bypassing odometry error
-                driveSimulation::getActualPoseInSimulationWorld,
+                driveSimulation::getSimulatedDriveTrainPose,
                 // Provide actual robot speed in simulation, bypassing encoder measurement error
-                driveSimulation::getActualSpeedsRobotRelative,
-                // Chassis speeds output
-                (speeds, feedforwards) -> 
-                    driveSimulation.runChassisSpeeds(speeds, new Translation2d(), false, false),
+                driveSimulation::getDriveTrainSimulatedChassisSpeedsRobotRelative,
+                // Chassis speeds output — set directly as the desired chassis speeds
+                (speeds, feedforwards) -> driveSimulation.setDesiredChassisSpeeds(speeds),
                 driveController, // Specify PID controller
                 PP_CONFIG,       // Specify robot configuration
                 // Flip path based on alliance side
@@ -117,17 +113,19 @@ public static final Pose2d[] ROBOTS_STARTING_POSITIONS = new Pose2d[] {
         new Pose2d(1.6, 4, new Rotation2d())
 };
 
+// Since maple-sim no longer models motors, there's no maximum-speed value to read from the
+// simulation — pick whatever top speed your opponent robot should drive at, just like you'd
+// pick a max speed constant for a real robot's drivetrain.
+private static final LinearVelocity MAX_LINEAR_SPEED = MetersPerSecond.of(4.5);
+private static final AngularVelocity MAX_ANGULAR_SPEED = RadiansPerSecond.of(Math.PI);
+
 /** Joystick drive command for opponent robots */
 private Command joystickDrive(XboxController joystick) {
     // Obtain chassis speeds from joystick input
     final Supplier<ChassisSpeeds> joystickSpeeds = () -> new ChassisSpeeds(
-            -joystick.getLeftY() * driveSimulation.maxLinearVelocity().in(MetersPerSecond),
-            -joystick.getLeftX() * driveSimulation.maxLinearVelocity().in(MetersPerSecond),
-            -joystick.getRightX() * driveSimulation.maxAngularVelocity().in(RadiansPerSecond));
-
-    // Obtain driverstation facing for opponent driver station
-    final Supplier<Rotation2d> opponentDriverStationFacing = () ->
-            FieldMirroringUtils.getCurrentAllianceDriverStationFacing().plus(Rotation2d.fromDegrees(180));
+            -joystick.getLeftY() * MAX_LINEAR_SPEED.in(MetersPerSecond),
+            -joystick.getLeftX() * MAX_LINEAR_SPEED.in(MetersPerSecond),
+            -joystick.getRightX() * MAX_ANGULAR_SPEED.in(RadiansPerSecond));
 
     return Commands.run(() -> {
             // Calculate field-centric speed from driverstation-centric speed
@@ -135,8 +133,9 @@ private Command joystickDrive(XboxController joystick) {
                     joystickSpeeds.get(),
                     FieldMirroringUtils.getCurrentAllianceDriverStationFacing()
                             .plus(Rotation2d.fromDegrees(180)));
-            // Run the field-centric speed
-            driveSimulation.runChassisSpeeds(fieldCentricSpeeds, new Translation2d(), true, true);
+            // setDesiredChassisSpeeds() takes robot-relative speeds, so convert back from field-centric
+            driveSimulation.setDesiredChassisSpeeds(ChassisSpeeds.fromFieldRelativeSpeeds(
+                    fieldCentricSpeeds, driveSimulation.getSimulatedDriveTrainPose().getRotation()));
             }, this)
             // Before the command starts, reset the robot to a position inside the field
             .beforeStarting(() -> driveSimulation.setSimulationWorldPose(
@@ -155,12 +154,12 @@ private Command feedShot() {
     return Commands.runOnce(() -> SimulatedArena.getInstance()
             .addGamePieceProjectile(new NoteOnFly(
                             this.driveSimulation
-                                    .getActualPoseInSimulationWorld()
+                                    .getSimulatedDriveTrainPose()
                                     .getTranslation(),
                             new Translation2d(0.3, 0),
-                            this.driveSimulation.getActualSpeedsFieldRelative(),
+                            this.driveSimulation.getDriveTrainSimulatedChassisSpeedsFieldRelative(),
                             this.driveSimulation
-                                    .getActualPoseInSimulationWorld()
+                                    .getSimulatedDriveTrainPose()
                                     .getRotation(),
                             0.5,
                             10,
@@ -191,8 +190,7 @@ public void buildBehaviorChooser(
     SendableChooser<Command> behaviorChooser = new SendableChooser<>();
     final Supplier<Command> disable =
             () -> Commands.runOnce(() -> driveSimulation.setSimulationWorldPose(queeningPose), this)
-                    .andThen(Commands.runOnce(() -> driveSimulation.runChassisSpeeds(
-                            new ChassisSpeeds(), new Translation2d(), false, false)))
+                    .andThen(Commands.runOnce(() -> driveSimulation.setDesiredChassisSpeeds(new ChassisSpeeds())))
                     .ignoringDisable(true);
 
     // Option to disable the robot

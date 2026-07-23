@@ -87,7 +87,7 @@ Please follow the guides below for quick setup:
 
 1. [Installing maple-sim](./installing-maple-sim.md)
 2. [Using the Simulated Arena](./using-the-simulated-arena.md)
-3. [Simulating Swerve Drivetrain](./swerve-simulation-overview.md)
+3. [Simulating the Drivetrain](./swerve-simulation-overview.md)
 4. [Simulating Intake](./simulating-intake.md)
 5. [Simulating Projectiles](./simulating-projectiles.md)
 6. [Simulating Opponent Robots](./simulating-opponent-robots.md)
